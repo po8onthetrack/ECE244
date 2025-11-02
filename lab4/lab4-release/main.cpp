@@ -21,12 +21,13 @@ void openRegister(
     stringstream &lineStream,
     string mode);  // register opens (it is upto customers to join)
 void closeRegister(stringstream &lineStream,
-                   string mode);  // register closes 
+                   string mode);  // register closes
 
 // Customer
 void addCustomer(stringstream &lineStream,
                  string mode);  // customer wants to join
 
+void departCustomers(string mode);
 
 // Helper functions
 bool getInt(stringstream &lineStream, int &iValue);
@@ -34,10 +35,10 @@ bool getDouble(stringstream &lineStream, double &dValue);
 bool foundMoreArgs(stringstream &lineStream);
 
 // Global variables
-RegisterList *registerList; // holding the list of registers
-QueueList *doneList; // holding the list of customers served
-QueueList *singleQueue; // holding customers in a single virtual queue
-double expTimeElapsed; // time elapsed since the beginning of the simulation
+RegisterList *registerList;  // holding the list of registers
+QueueList *doneList;         // holding the list of customers served
+QueueList *singleQueue;      // holding customers in a single virtual queue
+double expTimeElapsed;  // time elapsed since the beginning of the simulation
 
 // List of commands:
 // To open a register
@@ -58,10 +59,8 @@ int main() {
 
   string line;
   string command;
-
   cout << "> ";  // Prompt for input
   getline(cin, line);
-
   while (!cin.eof()) {
     stringstream lineStream(line);
     lineStream >> command;
@@ -75,8 +74,54 @@ int main() {
     cout << "> ";  // Prompt for input
     getline(cin, line);
   }
+  cout<<endl<<"Finished at time "<< expTimeElapsed <<endl;
 
-  // You have to make sure all dynamically allocated memory is freed 
+  
+  
+  if(doneList -> get_head()!= nullptr){
+  double maxWaitT = 0;
+  double aveWaitT = 0;
+  double stdDev = 0;
+  int numCustomer = 0;
+  double totalWaitT = 0;
+  Customer* temp1 = doneList -> get_head();
+  while(temp1 != nullptr){
+    double waitT = temp1 -> get_departureTime() - temp1 -> get_arrivalTime();
+    if(maxWaitT < waitT){
+      maxWaitT = waitT;
+    }
+    totalWaitT += waitT;
+    numCustomer ++;
+    temp1 = temp1 -> get_next();
+  }
+  aveWaitT = totalWaitT/numCustomer;
+
+  Customer* temp2 = doneList -> get_head();
+  double sumsquareDiff = 0;
+  while(temp2 != nullptr){
+    double waitT = temp2 -> get_departureTime() - temp2 -> get_arrivalTime();
+    sumsquareDiff += pow((waitT - aveWaitT) , 2);
+    temp2 = temp2 -> get_next();
+  }
+  stdDev = sqrt(sumsquareDiff/numCustomer);
+    cout<<"Statistics: "<<endl
+    <<"Maximum wait time: "<< maxWaitT <<endl
+    <<" Average wait time: "<< aveWaitT <<endl
+    <<" Standard Deviation of wait time: "<< stdDev <<endl;
+  }
+
+   while (doneList->get_head() != nullptr) {
+    Customer* customer = doneList->dequeue();
+    delete customer;
+  }
+  delete doneList;// delete donelist
+  while(singleQueue -> get_head() != nullptr){
+    Customer* customer = singleQueue -> dequeue();
+    delete customer;
+  }
+  delete singleQueue;// delete singleQueue
+  delete registerList;
+  // You have to make sure all dynamically allocated memory is freed
   // before return 0
   return 0;
 }
@@ -101,6 +146,7 @@ string getMode() {
 void addCustomer(stringstream &lineStream, string mode) {
   int items;
   double timeElapsed;
+
   if (!getInt(lineStream, items) || !getDouble(lineStream, timeElapsed)) {
     cout << "Error: too few arguments." << endl;
     return;
@@ -109,9 +155,61 @@ void addCustomer(stringstream &lineStream, string mode) {
     cout << "Error: too many arguments." << endl;
     return;
   }
-  // Depending on the mode of the simulation (single or multiple),
-  // add the customer to the single queue or to the register with
-  // fewest items
+  expTimeElapsed += timeElapsed;
+  departCustomers(mode);
+  Customer *customer = new Customer(expTimeElapsed, items);
+  cout << "A customer entered" << endl;
+
+  if (mode == "single") {
+    Register* freeRegister = registerList -> get_free_register();
+    if(freeRegister != nullptr){
+      freeRegister -> get_queue_list() -> enqueue(customer); 
+      cout << "Queued a customer with free register " << freeRegister->get_ID()
+           << endl;// add customer to a free register
+    }else{
+      singleQueue->enqueue(customer);
+      cout << "No free registers"
+           << endl; // add customers to the single queue
+
+    } 
+  } else if (mode == "multiple") {
+    Register* minItemReg = registerList -> get_min_items_register();
+    if (minItemReg != nullptr) {
+    minItemReg -> get_queue_list() -> enqueue(customer);
+    cout<<"Queued a customer with quickest register "<< 
+    minItemReg -> get_ID()<<endl;
+  } // add the customer to the registre with fewest items
+  }
+}
+
+void departCustomers(string mode) {
+  // depart customers at each register whose process time has passed
+  while (true) {
+    Register *min_reg =
+        registerList->calculateMinDepartTimeRegister(expTimeElapsed);
+    if (min_reg ==
+        nullptr)  // all register is empty, no customer can be departed
+      return;
+
+    Customer *customer = min_reg->get_queue_list()->get_head();
+    if(customer == nullptr) return;
+
+    double departTime = min_reg->calculateDepartTime();
+
+    if (departTime > expTimeElapsed)
+      return;  // no customer can be departed at this moment
+
+    min_reg->departCustomer(doneList);  // this will update the available time for the register
+    cout << "Departed a customer at register ID " << min_reg->get_ID() << " at "
+         << departTime << endl;
+
+    if (mode == "single" && singleQueue->get_head() != nullptr) {
+      Customer *nextCustomer = singleQueue->dequeue();
+      min_reg->get_queue_list()->enqueue(nextCustomer);
+      cout << "Queued a customer with free register " 
+         << min_reg->get_ID() << endl;
+    }  // if simulation is single, join next customer to the register
+  }
 }
 
 void parseRegisterAction(stringstream &lineStream, string mode) {
@@ -140,14 +238,30 @@ void openRegister(stringstream &lineStream, string mode) {
     cout << "Error: too many arguments" << endl;
     return;
   }
-
-  // Check if the register is already open
-  // If it's open, print an error message
-  // Otherwise, open the register
-  // If we were simulating a single queue, 
-  // and there were customers in line, then 
-  // assign a customer to the new register
+  if (registerList->foundRegister(ID)) {
+    cout << "Error: register " << ID << " is already open" << endl;
+    return;
+  }
   
+  expTimeElapsed += timeElapsed;
+  departCustomers(mode);
+
+  // Check if the register is already open If it's open, print an error message
+  Register *newRegister = new Register(ID, secPerItem, setupTime, expTimeElapsed);
+  registerList->enqueue(newRegister);
+  cout << "Opened register " << ID << endl;
+
+  
+
+  // Otherwise, open the register
+  if (mode == "single" && singleQueue->get_head() != nullptr) {
+    Customer *customer = singleQueue->dequeue();
+    newRegister->get_queue_list()->enqueue(customer);
+    cout << "Queued a customer with free register " << ID << endl;
+  }
+  // If we were simulating a single queue,
+  // and there were customers in line, then
+  // assign a customer to the new register
 }
 
 void closeRegister(stringstream &lineStream, string mode) {
@@ -162,10 +276,19 @@ void closeRegister(stringstream &lineStream, string mode) {
     cout << "Error: too many arguments" << endl;
     return;
   }
-  // Check if the register is open
+
+ 
+  if(! registerList -> foundRegister(ID)){ // Check if the register is open
+    cout<<" Error: register "<< ID <<" is not open"<<endl;
+    return; // not open
+  }
+  expTimeElapsed += timeElapsed;
+  departCustomers(mode);
+
+  Register* regClose = registerList -> dequeue(ID);
+  delete regClose;
   // If it is open dequeue it and free it's memory
-  // Otherwise, print an error message 
-  
+   cout << "Closed register " << ID << endl;
 }
 
 bool getInt(stringstream &lineStream, int &iValue) {
