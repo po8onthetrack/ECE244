@@ -1,58 +1,164 @@
-
-// Created by Salma Emara on 2023-06-02.
-#include "Register.h"
+#include "RegisterList.h"
 
 #include <iostream>
 
-Register::Register(int id, double timePerItem, double overhead,
-                   double entryTime) {
-  ID = id;
-  secPerItem = timePerItem;
-  overheadPerCustomer = overhead;
-  availableTime = entryTime;
-  next = nullptr;           // no other registers yet
-  queue = new QueueList();  // no customers in line yet, but has to initialize a
-                            // queue
+#include "Register.h"
+using namespace std;
+
+RegisterList::RegisterList() {
+  head = nullptr;
+  size = 0;
 }
 
-Register::~Register() { }
-
-QueueList* Register::get_queue_list() { }
-
-Register* Register::get_next() { }
-
-int Register::get_ID() {  }
-
-double Register::get_secPerItem() {  }
-
-double Register::get_overheadPerCustomer() {  }
-
-double Register::get_availableTime() {  }
-
-void Register::set_next(Register* nextRegister) {  }
-
-
-void Register::set_availableTime(double availableSince) {
-  availableTime = availableSince;
+RegisterList::~RegisterList() {
+  Register* curr = head;
+  while (curr != nullptr) {
+    Register* next = curr->get_next();
+    delete curr;
+    curr = next;
+  }
+  // Delete all registers in the list
 }
 
-double Register::calculateDepartTime() {
-  // Get the departure time of the first customer in the queue
-  // returns -1 if no customer is in the queue
+Register* RegisterList::get_head() {return head;}
+
+int RegisterList::get_size() { 
+  return size;
+  // return number of registers 
+}
+
+
+Register* RegisterList::get_min_items_register() {
+  Register* current = head;
+  if(head == nullptr) return nullptr; // no reigster opened
+  if(current -> get_next() == nullptr)
+  return current; // only one register
+
+  int min= current -> get_queue_list() -> get_items();
+  Register* min_reg = current;
+  while(current != nullptr){
+    int current_item = current -> get_queue_list() -> get_items();
+    if(current_item < min){
+      min = current_item; 
+      min_reg = current;
+    }
+    current = current -> get_next();
+  }
+  return min_reg;
+
+  // loop all registers to find the register with least number of items
   
 }
 
-void Register::departCustomer(QueueList* doneList) {
-  // dequeue the head, set last dequeue time, add to doneList,
-  // update availableTime of the register
+Register* RegisterList::get_free_register() {
+  Register* current = head;
+  if(head ==  nullptr)
+  return nullptr;
+  while(current != nullptr){
+    if(current -> get_queue_list() -> get_head() == nullptr){
+      return current;
+    }
+    current = current -> get_next();
+  }
+  return nullptr;
+  // return the register with no customers
+  // if all registers are occupied, return nullptr
 }
 
-void Register::print() {
-  std::cout << "Register ID: " << ID << std::endl;
-  std::cout << "Time per item: " << secPerItem << std::endl;
-  std::cout << "Overhead per customer: " << overheadPerCustomer << std::endl;
-  if (queue->get_head() != nullptr) {
-    std::cout << "Queue has customers: \n";
-    queue->print();
+void RegisterList::enqueue(Register* newRegister) {
+  if(head == nullptr){
+    head = newRegister;
+    size ++;
+  }
+  else{
+    Register* current = head;
+    while(current -> get_next() != nullptr){
+      current = current -> get_next();
+    }
+    current -> set_next(newRegister);
+    size ++;
+  }
+  // a register is placed at the end of the queue
+  // if the register's list is empty, the register becomes the head
+  // Assume the next of the newRegister is set to null
+  // You will have to increment size 
+  
+}
+
+bool RegisterList::foundRegister(int ID) {
+  if(head == nullptr)
+  return false; // no register
+  else{
+    Register* current = head;
+    while(current != nullptr){
+    if(current -> get_ID() == ID)
+    return true; 
+    current = current -> get_next();
+  } 
+  }
+  return false;
+  // look for a register with the given ID
+  // return true if found, false otherwise
+}
+
+Register* RegisterList::dequeue(int ID) {
+  if(head == nullptr) return nullptr;
+  Register* prev = head;
+  Register* current = head -> get_next();
+
+  if(head -> get_ID() == ID){
+      head = head -> get_next();
+      prev -> set_next(nullptr);
+      size --;
+      return prev;
+  }// dequeue head
+  
+  while(current != nullptr){
+        if(current -> get_ID() == ID){
+          prev -> set_next(current -> get_next());
+          current -> set_next(nullptr);
+          size--;
+          return current;
+        }
+      prev = current;
+      current = current -> get_next();
+      }
+      
+  return nullptr;
+  // dequeue the register with given ID
+  // return the dequeued register
+  // return nullptr if register was not found
+}
+
+Register* RegisterList::calculateMinDepartTimeRegister(double expTimeElapsed) {
+  if(head == nullptr) return nullptr;
+  //no register
+  Register* min_reg = head; 
+  Register* current = head;
+  bool allRegisterEmpty = true;
+  double mindeparttime = head -> calculateDepartTime(); //set mindepart time equal to first register
+  while(current != nullptr){
+    double departTime = current -> calculateDepartTime();
+    if(departTime != -1)
+    allRegisterEmpty = false;
+    if(departTime != -1 && (mindeparttime == -1 || departTime < mindeparttime)){
+      mindeparttime = departTime;
+      min_reg = current;
+    }
+    current = current -> get_next();
+  }
+  if(allRegisterEmpty)
+      return nullptr; // all register empty
+  else
+    return min_reg;
+  // return the register with minimum time of departure of its customer
+  // if all registers are free, return nullptr
+}
+
+void RegisterList::print() {
+  Register* temp = head;
+  while (temp != nullptr) {
+    temp->print();
+    temp = temp->get_next();
   }
 }
